@@ -2,33 +2,27 @@ package mindarc.com.taskmanager;
 
 import android.app.Activity;
 import android.app.ActivityManager;
-import android.app.ProgressDialog;
-import android.content.Context;
-import android.graphics.Color;
-import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.os.Debug;
 import android.os.Handler;
 import android.os.Message;
+import android.text.format.Formatter;
 import android.util.Log;
-import android.view.ActionMode;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.AbsListView;
 import android.widget.AdapterView;
 import android.widget.BaseAdapter;
 import android.widget.Button;
-import android.widget.ImageView;
+import android.widget.CheckedTextView;
 import android.widget.ListView;
-import android.widget.SimpleAdapter;
 import android.widget.TextView;
 
-import java.util.ArrayList;
-import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 
 public class TaskManagerActivity extends Activity implements View.OnClickListener, AdapterView.OnItemClickListener {
@@ -36,6 +30,7 @@ public class TaskManagerActivity extends Activity implements View.OnClickListene
     private ProcessHelper mProcessHelper;
     private ApplicationHelper mAppHelper;
     private HistoryHelper mHistoryHelper;
+    private ActivityManager mActivityManager;
 
     private List<Map<String, Object>> mProcessInfos;
     private static final int LOAD_PROCESS_INFOS = 1;
@@ -44,6 +39,7 @@ public class TaskManagerActivity extends Activity implements View.OnClickListene
 
     private ListView mProcessList;
     private Button mBtnClear;
+    private TextView mMemInfoText;
 
     private final Handler handler = new Handler() {
         @Override
@@ -58,11 +54,19 @@ public class TaskManagerActivity extends Activity implements View.OnClickListene
                     Log.w(TAG, "There are " + mProcessInfos.size() + " apps running now.");
                     mListItemSelected = new boolean[mProcessInfos.size()];
                     // Selected apps which were killed in history
+                    String appName, pkgName;
                     for (int i = 0; i < mProcessInfos.size(); i++) {
-                        String pkgName = (String) mProcessInfos.get(i).get(ProcessHelper.PKG_NAME);
-                        Log.i(TAG, "pkgName:" + pkgName);
+                        appName = (String) mProcessInfos.get(i).get(ProcessHelper.APP_NAME);
+                        pkgName = (String) mProcessInfos.get(i).get(ProcessHelper.PKG_NAME);
+                        Log.i(TAG, "appName:" + appName + ", pkgName:" + pkgName);
+                        mListItemSelected[i] = !NOT_RECOMMAND_PKGS.contains(pkgName);
                     }
                     mProcessList.setAdapter(new ProcessListAdapter());
+                    for (int i = 0; i < mProcessInfos.size(); i++) {
+                        mProcessList.setItemChecked(i, mListItemSelected[i]);
+                    }
+                    updateButtonInfo();
+
                 }
             }
         }
@@ -77,9 +81,6 @@ public class TaskManagerActivity extends Activity implements View.OnClickListene
 
 
     private class ProcessListAdapter extends BaseAdapter {
-        //public ProcessListAdapter() {
-            // TODO init the adapter
-        //}
 
         @Override
         public int getCount() {
@@ -102,11 +103,11 @@ public class TaskManagerActivity extends Activity implements View.OnClickListene
             if(view == null) {
                 view = getLayoutInflater().inflate(android.R.layout.simple_list_item_multiple_choice, parent, false);
             }
-            TextView packageName = (TextView)view.findViewById(android.R.id.text1);
+            CheckedTextView packageName = (CheckedTextView)view.findViewById(android.R.id.text1);
             Map<String, Object> processInfo = mProcessInfos.get(position);
             Debug.MemoryInfo memInfo = mMemInfos[position];
             packageName.setText((String)processInfo.get(ProcessHelper.APP_NAME) +
-                    " (" + memInfo.getTotalPss() / 1024f + "MB)");
+                    " (" + Formatter.formatFileSize(TaskManagerActivity.this, memInfo.getTotalPss() * 1024) + ")");
             return view;
         }
     };
@@ -126,23 +127,49 @@ public class TaskManagerActivity extends Activity implements View.OnClickListene
         }.start();
     }
 
+    private void updateMemoryInfo() {
+        ActivityManager.MemoryInfo memoryInfo = new ActivityManager.MemoryInfo();
+        mActivityManager.getMemoryInfo(memoryInfo);
+
+        mMemInfoText.setText(Formatter.formatFileSize(this, memoryInfo.totalMem - memoryInfo.availMem) + "/" +
+                Formatter.formatFileSize(this, memoryInfo.totalMem));
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_task_manager);
         mProcessList = (ListView) findViewById(R.id.tasks);
         mBtnClear = (Button) findViewById(R.id.button_clear);
+        mMemInfoText = (TextView) findViewById(R.id.mem_info);
 
+        mActivityManager = (ActivityManager)getSystemService(ACTIVITY_SERVICE);
         mAppHelper = new ApplicationHelper(getPackageManager());
-        mProcessHelper = new ProcessHelper(
-                (ActivityManager) getSystemService(ACTIVITY_SERVICE), mAppHelper);
+        mProcessHelper = new ProcessHelper(mActivityManager, mAppHelper);
         mHistoryHelper = new HistoryHelper();
 
         mBtnClear.setOnClickListener(this);
         mProcessList.setOnItemClickListener(this);
+        updateMemoryInfo();
         updateProcessInfoAsync();
     }
 
+    private static final Set<String> NOT_RECOMMAND_PKGS = new HashSet<String>();
+    static {
+        NOT_RECOMMAND_PKGS.add("com.svox.pico");
+        NOT_RECOMMAND_PKGS.add("com.oppo.alarmclock");
+        NOT_RECOMMAND_PKGS.add("android.process.contacts");
+        NOT_RECOMMAND_PKGS.add("com.oppo.weather");
+        NOT_RECOMMAND_PKGS.add("com.oppo.weather:mcs");
+        NOT_RECOMMAND_PKGS.add("com.tencent.mobileqq");
+        NOT_RECOMMAND_PKGS.add("com.tencent.mobileqq:MSF");
+        NOT_RECOMMAND_PKGS.add("com.tencent.mobileqq:web");
+        NOT_RECOMMAND_PKGS.add("com.qihoo360.mobilesafe");
+        NOT_RECOMMAND_PKGS.add("com.qihoo360.mobilesafe:GuardService");
+        NOT_RECOMMAND_PKGS.add("com.qihoo360.mobilesafe:FloatWindow");
+        NOT_RECOMMAND_PKGS.add("com.qihoo360.mobilesafe:engine");
+        NOT_RECOMMAND_PKGS.add("com.qihoo360.mobilesafe:scan");
+    }
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
@@ -174,23 +201,25 @@ public class TaskManagerActivity extends Activity implements View.OnClickListene
                 processInfo = mProcessInfos.get(pos);
                 if(processInfo != null) {
                     mProcessHelper.killApp((String) processInfo.get(ProcessHelper.PKG_NAME));
+                    //mProcessHelper.killApp((String) processInfo.get(ProcessHelper.PKG_NAME),
+                            //(Integer)processInfo.get(ProcessHelper.APP_UID));
                 }
             }
         }
+        updateMemoryInfo();
         updateProcessInfoAsync();
     }
 
     private void updateButtonInfo() {
-        // TODO: calculate the process count and total memory
         int selectedProcessCount = 0;
-        float cleanedMem = 0;
+        long cleanedMem = 0;
         for(int pos = 0; pos < mListItemSelected.length; ++pos) {
             if(mListItemSelected[pos]) {
                 ++selectedProcessCount;
-                cleanedMem += mMemInfos[pos].getTotalPss() / 1024f;
+                cleanedMem += mMemInfos[pos].getTotalPss();
             }
         }
         mBtnClear.setText(selectedProcessCount == 0 ? "No process selected" : "Kill " +
-                selectedProcessCount + " processes, free " + cleanedMem + "MB");
+                selectedProcessCount + " processes, free " + Formatter.formatFileSize(this, cleanedMem * 1024));
     }
 }

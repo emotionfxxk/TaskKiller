@@ -31,6 +31,7 @@ public class ProcessHelper {
 	public static final String APP_NAME = "appName";
 	public static final String APP_ICON = "appIcon";
     public static final String APP_PID = "appPid";
+    public static final String APP_UID = "appUid";
 
 	public ActivityManager getActivityManager() {
 		return activityManager;
@@ -65,6 +66,37 @@ public class ProcessHelper {
 
 	}
 
+    public void killApp(String packgeName, int uid) {
+        Method method = getKillByUidMethod();
+        try {
+            if (method != null) {
+                //method.invoke(this.activityManager, packgeName, uid);
+                method.invoke(this.activityManager, packgeName);
+            } else {
+                //this.activityManager.restartPackage(packgeName);
+                Log.e(TAG, "failed to get method");
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            //Log.e(TAG, e.getMessage());
+        }
+
+    }
+
+    private Method getKillByUidMethod() {
+        try {
+            Class[] params = new Class[1];
+            params[0] = String.class;
+            //params[1] = int.class;
+            Method method = ActivityManager.class.getDeclaredMethod(
+                    "forceStopPackage", params);
+            return method;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
 	private Method getKillMethod() {
 		try {
 			Method method = ActivityManager.class.getDeclaredMethod(
@@ -82,7 +114,18 @@ public class ProcessHelper {
 		IGNORE_PKGS.add("com.android.email");
 		IGNORE_PKGS.add("com.android.systemui");
 		IGNORE_PKGS.add(ProcessHelper.class.getPackage().getName());
+        IGNORE_PKGS.add("com.oppo.launcher");
+        IGNORE_PKGS.add("android.process.acore");
+        IGNORE_PKGS.add("com.sohu.inputmethod.sogouoem");
+        IGNORE_PKGS.add("com.android.smspush");
+        IGNORE_PKGS.add("com.android.nfc");
+        IGNORE_PKGS.add("com.oppo.oppogestureservice");
+        IGNORE_PKGS.add("com.oppo.vwu");
+        IGNORE_PKGS.add("com.oppo.maxxaudio");
+        IGNORE_PKGS.add("com.coloros.appmanager");
+
 	}
+
 
 	/**
 	 * Get all running apps
@@ -97,7 +140,7 @@ public class ProcessHelper {
 		if (list != null) {
 			for (RunningAppProcessInfo runningAppProcessInfo : list) {
 				String packageName = runningAppProcessInfo.processName;
-                Log.i(TAG, packageName + String.valueOf(runningAppProcessInfo.pid));
+                Log.i(TAG, packageName + " : " + String.valueOf(runningAppProcessInfo.pid));
 				// Ignore uniq task
 				if (IGNORE_PKGS.contains(packageName))
 					continue;
@@ -106,6 +149,8 @@ public class ProcessHelper {
 				Map<String, Object> processInfo = new HashMap<String, Object>();
 				processInfo.put(PKG_NAME, packageName);
                 processInfo.put(APP_PID, runningAppProcessInfo.pid);
+                processInfo.put(APP_UID, runningAppProcessInfo.uid);
+                Log.i(TAG, packageName + " : " + appInfo);
 				if (appInfo != null) {
 					processInfo.put(APP_NAME,
 							appInfo.loadLabel(this.appHelper.getPm())

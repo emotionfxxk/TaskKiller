@@ -2,6 +2,9 @@
     xmlns:tools="http://schemas.android.com/tools" android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical" tools:context=".TaskManagerActivity">
+    <TextView android:id="@+id/mem_info" android:layout_width="match_parent" android:layout_height="60dp"
+        android:gravity="center" android:background="@android:color/background_dark" android:textColor="@android:color/white"
+        android:textSize="26sp"/>
     <ListView
         android:id="@+id/tasks"
         android:layout_width="match_parent"
