@@ -2,6 +2,7 @@ package mindarc.com.taskmanager;
 
 import android.app.Activity;
 import android.app.ActivityManager;
+import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.os.Debug;
 import android.os.Handler;
@@ -12,10 +13,11 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.AdapterView;
 import android.widget.BaseAdapter;
 import android.widget.Button;
-import android.widget.CheckedTextView;
+import android.widget.CheckBox;
+import android.widget.CompoundButton;
+import android.widget.ImageView;
 import android.widget.ListView;
 import android.widget.TextView;
 
@@ -25,7 +27,7 @@ import java.util.Map;
 import java.util.Set;
 
 
-public class TaskManagerActivity extends Activity implements View.OnClickListener, AdapterView.OnItemClickListener {
+public class TaskManagerActivity extends Activity implements View.OnClickListener, CompoundButton.OnCheckedChangeListener{
     private final static String TAG = "TaskManagerActivity";
     private ProcessHelper mProcessHelper;
     private ApplicationHelper mAppHelper;
@@ -51,6 +53,7 @@ public class TaskManagerActivity extends Activity implements View.OnClickListene
                     mListItemSelected = null;
                     return;
                 } else {
+                    Log.i(TAG, "cost:" + (System.currentTimeMillis() - startTime) + "ms");
                     Log.w(TAG, "There are " + mProcessInfos.size() + " apps running now.");
                     mListItemSelected = new boolean[mProcessInfos.size()];
                     // Selected apps which were killed in history
@@ -62,9 +65,9 @@ public class TaskManagerActivity extends Activity implements View.OnClickListene
                         mListItemSelected[i] = !NOT_RECOMMAND_PKGS.contains(pkgName);
                     }
                     mProcessList.setAdapter(new ProcessListAdapter());
-                    for (int i = 0; i < mProcessInfos.size(); i++) {
-                        mProcessList.setItemChecked(i, mListItemSelected[i]);
-                    }
+                    //for (int i = 0; i < mProcessInfos.size(); i++) {
+                        //mProcessList.setItemChecked(i, mListItemSelected[i]);
+                    //}
                     updateButtonInfo();
 
                 }
@@ -73,12 +76,20 @@ public class TaskManagerActivity extends Activity implements View.OnClickListene
     };
 
     @Override
-    public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-        mListItemSelected[position] = !mListItemSelected[position];
-        Log.i(TAG, "onItemClick position:" + position + ", checked?" + mListItemSelected[position]);
+    public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+        int position = (Integer)buttonView.getTag();
+        mListItemSelected[position] = isChecked;
+        Log.i(TAG, "onCheckedChanged position:" + position + ", checked?" + mListItemSelected[position]);
         updateButtonInfo();
     }
 
+    private static class ViewHolder {
+        public ImageView appIcon;
+        public TextView title;
+        public TextView subTitle;
+        public TextView detail;
+        public CheckBox checkBox;
+    }
 
     private class ProcessListAdapter extends BaseAdapter {
 
@@ -99,20 +110,41 @@ public class TaskManagerActivity extends Activity implements View.OnClickListene
 
         @Override
         public View getView(int position, View convertView, ViewGroup parent) {
+            final ViewHolder holder;
             View view = convertView;
             if(view == null) {
-                view = getLayoutInflater().inflate(android.R.layout.simple_list_item_multiple_choice, parent, false);
+                holder = new ViewHolder();
+                view = getLayoutInflater().inflate(R.layout.scan_result_item_multiple_choice, parent, false);
+                holder.appIcon = (ImageView)view.findViewById(R.id.app_icon);
+                holder.title = (TextView) view.findViewById(R.id.title);
+                holder.subTitle = (TextView) view.findViewById(R.id.sub_title);
+                holder.detail = (TextView) view.findViewById(R.id.detail);
+                holder.checkBox = (CheckBox) view.findViewById(R.id.check_mark);
+                view.setTag(holder);
+            } else {
+                holder = (ViewHolder) view.getTag();
             }
-            CheckedTextView packageName = (CheckedTextView)view.findViewById(android.R.id.text1);
+            holder.checkBox.setTag(Integer.valueOf(position));
+            holder.checkBox.setOnCheckedChangeListener(TaskManagerActivity.this);
             Map<String, Object> processInfo = mProcessInfos.get(position);
             Debug.MemoryInfo memInfo = mMemInfos[position];
-            packageName.setText((String)processInfo.get(ProcessHelper.APP_NAME) +
-                    " (" + Formatter.formatFileSize(TaskManagerActivity.this, memInfo.getTotalPss() * 1024) + ")");
+            Drawable appIcon;
+            if(processInfo.get(ProcessHelper.APP_ICON) instanceof Drawable) {
+                appIcon = (Drawable)processInfo.get(ProcessHelper.APP_ICON);
+            } else {
+                appIcon = TaskManagerActivity.this.getResources().getDrawable((Integer)processInfo.get(ProcessHelper.APP_ICON));
+            }
+            holder.title.setText((String)processInfo.get(ProcessHelper.APP_NAME));
+            holder.detail.setText(Formatter.formatFileSize(TaskManagerActivity.this, memInfo.getTotalPss() * 1024));
+            holder.appIcon.setImageDrawable(appIcon);
+            holder.checkBox.setChecked(mListItemSelected[position]);
             return view;
         }
     };
 
+    private long startTime;
     private void updateProcessInfoAsync() {
+        startTime = System.currentTimeMillis();
         new Thread() {
             @Override
             public void run() {
@@ -149,8 +181,8 @@ public class TaskManagerActivity extends Activity implements View.OnClickListene
         mHistoryHelper = new HistoryHelper();
 
         mBtnClear.setOnClickListener(this);
-        mProcessList.setOnItemClickListener(this);
         updateMemoryInfo();
+
         updateProcessInfoAsync();
     }
 
@@ -196,6 +228,7 @@ public class TaskManagerActivity extends Activity implements View.OnClickListene
     @Override
     public void onClick(View v) {
         Map<String, Object> processInfo;
+        startTime = System.currentTimeMillis();
         for(int pos = 0; pos < mProcessInfos.size(); ++pos) {
             if(mListItemSelected[pos]) {
                 processInfo = mProcessInfos.get(pos);
@@ -206,7 +239,10 @@ public class TaskManagerActivity extends Activity implements View.OnClickListene
                 }
             }
         }
+        Log.i(TAG, "kill cost:" + (System.currentTimeMillis() - startTime) + "ms");
+        startTime = System.currentTimeMillis();
         updateMemoryInfo();
+        Log.i(TAG, "update memory info cost:" + (System.currentTimeMillis() - startTime) + "ms");
         updateProcessInfoAsync();
     }
 

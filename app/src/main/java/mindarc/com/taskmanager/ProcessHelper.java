@@ -160,7 +160,7 @@ public class ProcessHelper {
 
 				} else {
 					processInfo.put(APP_NAME, packageName);
-					processInfo.put(APP_ICON, R.drawable.unknow);
+					processInfo.put(APP_ICON, android.R.drawable.sym_def_app_icon);
 				}
 				rt.add(processInfo);
 			}
