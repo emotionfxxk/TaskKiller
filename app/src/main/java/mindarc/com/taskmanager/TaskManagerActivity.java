@@ -4,7 +4,6 @@ import android.app.Activity;
 import android.app.ActivityManager;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
-import android.os.Debug;
 import android.os.Handler;
 import android.os.Message;
 import android.text.format.Formatter;
@@ -21,11 +20,10 @@ import android.widget.ImageView;
 import android.widget.ListView;
 import android.widget.TextView;
 
-import java.util.ArrayList;
-import java.util.HashSet;
+import mindarc.com.taskmanager.util.MemorySizeFormatter;
+
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 
 public class TaskManagerActivity extends Activity implements View.OnClickListener, CompoundButton.OnCheckedChangeListener{
@@ -120,8 +118,9 @@ public class TaskManagerActivity extends Activity implements View.OnClickListene
             } else {
                 appIcon = TaskManagerActivity.this.getResources().getDrawable((Integer)processInfo.get(ProcessHelper.APP_ICON));
             }
+
             holder.title.setText((String)processInfo.get(ProcessHelper.APP_NAME));
-            holder.detail.setText(Formatter.formatFileSize(TaskManagerActivity.this, memorySizeKb * 1024));
+            holder.detail.setText(MemorySizeFormatter.readableFileSize(memorySizeKb * 1024));
             holder.appIcon.setImageDrawable(appIcon);
             holder.checkBox.setChecked((boolean)mProcessInfos.get(position).get(ProcessHelper.APP_RECOMMEND_CLEAN));
 
