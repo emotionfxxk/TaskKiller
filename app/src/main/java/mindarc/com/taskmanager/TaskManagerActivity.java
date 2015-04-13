@@ -120,7 +120,7 @@ public class TaskManagerActivity extends Activity implements View.OnClickListene
             }
 
             holder.title.setText((String)processInfo.get(ProcessHelper.APP_NAME));
-            holder.detail.setText(MemorySizeFormatter.readableFileSize(memorySizeKb * 1024));
+            holder.detail.setText(MemorySizeFormatter.formatMemorySize(memorySizeKb * 1024));
             holder.appIcon.setImageDrawable(appIcon);
             holder.checkBox.setChecked((boolean)mProcessInfos.get(position).get(ProcessHelper.APP_RECOMMEND_CLEAN));
 
