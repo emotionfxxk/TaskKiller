@@ -16,7 +16,10 @@ import java.util.Set;
 import android.app.ActivityManager;
 import android.app.ActivityManager.RunningAppProcessInfo;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.os.Debug;
 import android.util.Log;
 import android.util.SparseArray;
@@ -36,11 +39,11 @@ public class ProcessHelper {
 	public static final String PKG_NAME = "pkgName";
 	public static final String APP_NAME = "appName";
 	public static final String APP_ICON = "appIcon";
-    public static final String APP_PID = "appPid";
     public static final String APP_UID = "appUid";
     public static final String APP_TOTAL_PSS = "appTotalPss";
     public static final String APP_PROCS = "appProcs";
     public static final String APP_PROC_MEM = "appProcMem";
+    public static final String APP_RECOMMEND_CLEAN = "appRecommendClean";
 
 	public ActivityManager getActivityManager() {
 		return activityManager;
@@ -116,7 +119,7 @@ public class ProcessHelper {
 		}
 	}
 
-	private static final Set<String> IGNORE_PKGS = new HashSet<String>();
+	private static Set<String> IGNORE_PKGS = new HashSet<String>();
 	static {
 		IGNORE_PKGS.add("system");
 		IGNORE_PKGS.add("com.android.phone");
@@ -136,13 +139,24 @@ public class ProcessHelper {
 
 	}
 
+    private static  Set<String> NOT_RECOMMAND_PKGS = new HashSet<String>();
+    static {
+        NOT_RECOMMAND_PKGS.add("com.svox.pico");
+        NOT_RECOMMAND_PKGS.add("com.oppo.alarmclock");
+        NOT_RECOMMAND_PKGS.add("android.process.contacts");
+        NOT_RECOMMAND_PKGS.add("com.oppo.weather");
+        NOT_RECOMMAND_PKGS.add("com.tencent.mobileqq");
+        NOT_RECOMMAND_PKGS.add("com.tencent.mm");
+        NOT_RECOMMAND_PKGS.add("com.qihoo360.mobilesafe");
+    }
+
 
 	/**
 	 * Get all running apps
 	 * 如何判断多个进程是属于一个app？
      * 1. 相同的前缀包名
      * 返回的运行时应用列表， 按照内存占用量降序排序
-	 * @param context
+	 * @param ctx
 	 * @return
 	 */
 
@@ -152,6 +166,7 @@ public class ProcessHelper {
         List<RunningAppProcessInfo> runningAppProcesses = activityManager.getRunningAppProcesses();
         if(runningAppProcesses == null) return null;
 
+        // sort all running app processes
         Collections.sort(runningAppProcesses, new Comparator<RunningAppProcessInfo>() {
             @Override
             public int compare(RunningAppProcessInfo lhs, RunningAppProcessInfo rhs) {
@@ -160,9 +175,30 @@ public class ProcessHelper {
                 return lhsPkgName.compareToIgnoreCase(rhsPkgName);
             }
         });
+
+        Intent intent = new Intent(Intent.ACTION_MAIN);
+        intent.addCategory(Intent.CATEGORY_HOME);
+        ResolveInfo resolveInfo = appHelper.getPm().resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY);
+        String currentHomePackage = resolveInfo.activityInfo.packageName;
+        IGNORE_PKGS.add(currentHomePackage);
+
+        // remove all ignored packages
+        Log.i(TAG, "before remove :" + runningAppProcesses.size());
+        ArrayList<RunningAppProcessInfo> toBeRemoved = new ArrayList<RunningAppProcessInfo>();
         for(RunningAppProcessInfo runningProcessInfo : runningAppProcesses) {
             Log.i(TAG, "after sort:" + runningProcessInfo.processName);
+            try {
+                String appPkgname = runningProcessInfo.processName.split(":")[0];
+                if (IGNORE_PKGS.contains(appPkgname)) {
+                    toBeRemoved.add(runningProcessInfo);
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                Log.w(TAG, "exception raised while remove ignore list:" + e.toString());
+            }
         }
+        runningAppProcesses.removeAll(toBeRemoved);
+        Log.i(TAG, "removed :" + toBeRemoved.size() + " ignored packages, after remove size:" + runningAppProcesses.size());
 
         Map<String, Map<String, Object>> runningApps = new HashMap<String, Map<String, Object>>();
         // iterate the running app process list
@@ -176,9 +212,6 @@ public class ProcessHelper {
             String appPkgname = pkgNameSections[0];
             String subProcessName = (pkgNameSections.length == 2) ? pkgNameSections[1] : null;
             Log.i(TAG, "appPkgname:" + appPkgname + ", subProcessName:" + subProcessName);
-
-            if (IGNORE_PKGS.contains(appPkgname))
-                continue;
 
             // get application info from package name
             ApplicationInfo appInfo = appHelper.getApplicationInfo(appPkgname);
@@ -198,7 +231,12 @@ public class ProcessHelper {
                 appInfoMap.put(APP_UID, runningProcessInfo.uid);
             }
 
-            // only main process can get human readable name
+            // put recommend flag
+            if(!appInfoMap.containsKey(APP_RECOMMEND_CLEAN)) {
+                appInfoMap.put(APP_RECOMMEND_CLEAN, !NOT_RECOMMAND_PKGS.contains(appPkgname));
+            }
+
+                // only main process can get human readable name
             if(appInfo != null) {
                 appInfoMap.put(APP_NAME, appInfo.loadLabel(appHelper.getPm()).toString());
             } else if(!appInfoMap.containsKey(APP_NAME)) {

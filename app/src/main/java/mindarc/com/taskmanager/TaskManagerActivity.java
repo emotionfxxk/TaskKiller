@@ -37,8 +37,6 @@ public class TaskManagerActivity extends Activity implements View.OnClickListene
 
     private List<Map<String, Object>> mProcessInfos;
     private static final int LOAD_PROCESS_INFOS = 1;
-    private boolean[] mListItemSelected;
-    //private Debug.MemoryInfo[] mMemInfos;
 
     private ListView mProcessList;
     private Button mBtnClear;
@@ -51,24 +49,11 @@ public class TaskManagerActivity extends Activity implements View.OnClickListene
 
                 if ((mProcessInfos == null) || mProcessInfos.isEmpty()) {
                     mProcessList.setAdapter(null);
-                    mListItemSelected = null;
                     return;
                 } else {
                     Log.i(TAG, "cost:" + (System.currentTimeMillis() - startTime) + "ms");
                     Log.w(TAG, "There are " + mProcessInfos.size() + " apps running now.");
-                    mListItemSelected = new boolean[mProcessInfos.size()];
-                    // Selected apps which were killed in history
-                    String appName, pkgName;
-                    for (int i = 0; i < mProcessInfos.size(); i++) {
-                        appName = (String) mProcessInfos.get(i).get(ProcessHelper.APP_NAME);
-                        pkgName = (String) mProcessInfos.get(i).get(ProcessHelper.PKG_NAME);
-                        Log.i(TAG, "appName:" + appName + ", pkgName:" + pkgName);
-                        mListItemSelected[i] = !NOT_RECOMMAND_PKGS.contains(pkgName);
-                    }
                     mProcessList.setAdapter(new ProcessListAdapter());
-                    //for (int i = 0; i < mProcessInfos.size(); i++) {
-                        //mProcessList.setItemChecked(i, mListItemSelected[i]);
-                    //}
                     updateButtonInfo();
 
                 }
@@ -79,8 +64,7 @@ public class TaskManagerActivity extends Activity implements View.OnClickListene
     @Override
     public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
         int position = (Integer)buttonView.getTag();
-        mListItemSelected[position] = isChecked;
-        Log.i(TAG, "onCheckedChanged position:" + position + ", checked?" + mListItemSelected[position]);
+        mProcessInfos.get(position).put(ProcessHelper.APP_RECOMMEND_CLEAN, isChecked);
         updateButtonInfo();
     }
 
@@ -128,7 +112,6 @@ public class TaskManagerActivity extends Activity implements View.OnClickListene
             holder.checkBox.setTag(Integer.valueOf(position));
             holder.checkBox.setOnCheckedChangeListener(TaskManagerActivity.this);
             Map<String, Object> processInfo = mProcessInfos.get(position);
-            //Debug.MemoryInfo memInfo = mMemInfos[position];
             int memorySizeKb = (Integer)processInfo.get(ProcessHelper.APP_TOTAL_PSS);
             Log.i(TAG, "app name: " +(String)processInfo.get(ProcessHelper.APP_NAME));
             Drawable appIcon;
@@ -140,7 +123,8 @@ public class TaskManagerActivity extends Activity implements View.OnClickListene
             holder.title.setText((String)processInfo.get(ProcessHelper.APP_NAME));
             holder.detail.setText(Formatter.formatFileSize(TaskManagerActivity.this, memorySizeKb * 1024));
             holder.appIcon.setImageDrawable(appIcon);
-            holder.checkBox.setChecked(mListItemSelected[position]);
+            holder.checkBox.setChecked((boolean)mProcessInfos.get(position).get(ProcessHelper.APP_RECOMMEND_CLEAN));
+
             return view;
         }
     };
@@ -152,20 +136,8 @@ public class TaskManagerActivity extends Activity implements View.OnClickListene
             @Override
             public void run() {
                 long start = System.currentTimeMillis();
-                //mProcessInfos = mProcessHelper.getProcessInfos(getApplicationContext());
-                //Log.i(TAG, "cost 1:" + (System.currentTimeMillis() - start));
-                //start = System.currentTimeMillis();
                 mProcessInfos = mProcessHelper.getRunningApps(getApplicationContext());
-                Log.i(TAG, "cost 2:" + (System.currentTimeMillis() - start));
-
-                /*
-                start = System.currentTimeMillis();
-                int[] pids = new int[mProcessInfos.size()];
-                for (int i = 0; i < mProcessInfos.size(); i++) {
-                    pids[i] =  (Integer)mProcessInfos.get(i).get(ProcessHelper.APP_PID);
-                }
-                mMemInfos = mProcessHelper.getDebugMemoryInfos(pids);
-                Log.i(TAG, "get memory here:" + (System.currentTimeMillis() - start));*/
+                Log.i(TAG, "Get apps info list cost:" + (System.currentTimeMillis() - start));
                 handler.sendEmptyMessage(LOAD_PROCESS_INFOS);
             }
         }.start();
@@ -198,23 +170,6 @@ public class TaskManagerActivity extends Activity implements View.OnClickListene
         updateProcessInfoAsync();
     }
 
-    private static final Set<String> NOT_RECOMMAND_PKGS = new HashSet<String>();
-    static {
-        NOT_RECOMMAND_PKGS.add("com.svox.pico");
-        NOT_RECOMMAND_PKGS.add("com.oppo.alarmclock");
-        NOT_RECOMMAND_PKGS.add("android.process.contacts");
-        NOT_RECOMMAND_PKGS.add("com.oppo.weather");
-        NOT_RECOMMAND_PKGS.add("com.oppo.weather:mcs");
-        NOT_RECOMMAND_PKGS.add("com.tencent.mobileqq");
-        NOT_RECOMMAND_PKGS.add("com.tencent.mobileqq:MSF");
-        NOT_RECOMMAND_PKGS.add("com.tencent.mobileqq:web");
-        NOT_RECOMMAND_PKGS.add("com.qihoo360.mobilesafe");
-        NOT_RECOMMAND_PKGS.add("com.qihoo360.mobilesafe:GuardService");
-        NOT_RECOMMAND_PKGS.add("com.qihoo360.mobilesafe:FloatWindow");
-        NOT_RECOMMAND_PKGS.add("com.qihoo360.mobilesafe:engine");
-        NOT_RECOMMAND_PKGS.add("com.qihoo360.mobilesafe:scan");
-    }
-
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         // Inflate the menu; this adds items to the action bar if it is present.
@@ -239,15 +194,14 @@ public class TaskManagerActivity extends Activity implements View.OnClickListene
 
     @Override
     public void onClick(View v) {
-        Map<String, Object> processInfo;
+        //Map<String, Object> processInfo;
         startTime = System.currentTimeMillis();
-        for(int pos = 0; pos < mProcessInfos.size(); ++pos) {
-            if(mListItemSelected[pos]) {
-                processInfo = mProcessInfos.get(pos);
-                if(processInfo != null) {
-                    mProcessHelper.killApp((String) processInfo.get(ProcessHelper.PKG_NAME));
-                    //mProcessHelper.killApp((String) processInfo.get(ProcessHelper.PKG_NAME),
-                            //(Integer)processInfo.get(ProcessHelper.APP_UID));
+        for(Map<String, Object> runningAppInfo : mProcessInfos) {
+            if((boolean)runningAppInfo.get(ProcessHelper.APP_RECOMMEND_CLEAN)) {
+                List<ActivityManager.RunningAppProcessInfo> processes =
+                        (List<ActivityManager.RunningAppProcessInfo>)runningAppInfo.get(ProcessHelper.APP_PROCS);
+                for(ActivityManager.RunningAppProcessInfo processInfo : processes) {
+                    mProcessHelper.killApp(processInfo.processName);
                 }
             }
         }
@@ -261,10 +215,11 @@ public class TaskManagerActivity extends Activity implements View.OnClickListene
     private void updateButtonInfo() {
         int selectedProcessCount = 0;
         long cleanedMem = 0;
-        for(int pos = 0; pos < mListItemSelected.length; ++pos) {
-            if(mListItemSelected[pos]) {
+
+        for(Map<String, Object> runningAppInfo : mProcessInfos) {
+            if((boolean)runningAppInfo.get(ProcessHelper.APP_RECOMMEND_CLEAN)) {
                 ++selectedProcessCount;
-                cleanedMem += (Integer)mProcessInfos.get(pos).get(ProcessHelper.APP_TOTAL_PSS);
+                cleanedMem += (Integer)runningAppInfo.get(ProcessHelper.APP_TOTAL_PSS);
             }
         }
         mBtnClear.setText(selectedProcessCount == 0 ? "No process selected" : "Kill " +
