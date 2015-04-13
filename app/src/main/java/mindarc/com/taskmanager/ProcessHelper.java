@@ -2,8 +2,12 @@ package mindarc.com.taskmanager;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -34,6 +38,7 @@ public class ProcessHelper {
 	public static final String APP_ICON = "appIcon";
     public static final String APP_PID = "appPid";
     public static final String APP_UID = "appUid";
+    public static final String APP_TOTAL_PSS = "appTotalPss";
     public static final String APP_PROCS = "appProcs";
     public static final String APP_PROC_MEM = "appProcMem";
 
@@ -181,11 +186,29 @@ public class ProcessHelper {
     // 规则2： 相同的前缀包名
     // 规则1 & 规则2
     // 返回的运行时应用列表， 按照内存占用量降序排序
-    private final static int SYSTEM_UID = 1000;
     public List<Map<String, Object>> getRunningApps(Context ctx) {
+        long start = System.currentTimeMillis();
+
         // get all running app processes
         List<RunningAppProcessInfo> runningAppProcesses = activityManager.getRunningAppProcesses();
+        Log.i(TAG, "getRunningAppProcesses cost:" + (System.currentTimeMillis() - start));
         if(runningAppProcesses == null) return null;
+
+        start = System.currentTimeMillis();
+        Collections.sort(runningAppProcesses, new Comparator<RunningAppProcessInfo>() {
+            @Override
+            public int compare(RunningAppProcessInfo lhs, RunningAppProcessInfo rhs) {
+                String lhsPkgName = lhs.processName.split(":")[0];
+                String rhsPkgName = rhs.processName.split(":")[0];
+                return lhsPkgName.compareToIgnoreCase(rhsPkgName);
+            }
+        });
+        Log.i(TAG, "sort process list cost:" + (System.currentTimeMillis() - start));
+        for(RunningAppProcessInfo runningProcessInfo : runningAppProcesses) {
+            Log.i(TAG, "after sort:" + runningProcessInfo.processName);
+        }
+
+        start = System.currentTimeMillis();
         Map<String, Map<String, Object>> runningApps = new HashMap<String, Map<String, Object>>();
         // iterate the running app process list
         for(RunningAppProcessInfo runningProcessInfo : runningAppProcesses) {
@@ -199,7 +222,12 @@ public class ProcessHelper {
             String subProcessName = (pkgNameSections.length == 2) ? pkgNameSections[1] : null;
             Log.i(TAG, "appPkgname:" + appPkgname + ", subProcessName:" + subProcessName);
 
-            ApplicationInfo appInfo = appHelper.getApplicationInfo(runningProcessInfo.processName);
+            if (IGNORE_PKGS.contains(appPkgname))
+                continue;
+
+            // get application info from package name
+            ApplicationInfo appInfo = appHelper.getApplicationInfo(appPkgname);
+            if(appInfo == null) appInfo = appHelper.getApplicationInfo(runningProcessInfo.processName);
 
             // get app info by app package name
             Map<String, Object> appInfoMap = runningApps.get(appPkgname);
@@ -216,36 +244,54 @@ public class ProcessHelper {
             }
 
             // only main process can get human readable name
-            if(subProcessName == null && !appInfoMap.containsKey(APP_NAME)) {
-                if (appInfo != null) {
-                    appInfoMap.put(APP_NAME, appInfo.loadLabel(appHelper.getPm()).toString());
-                } else {
-                    appInfoMap.put(APP_NAME, appPkgname);
-                }
-
+            if(appInfo != null) {
+                appInfoMap.put(APP_NAME, appInfo.loadLabel(appHelper.getPm()).toString());
+            } else if(!appInfoMap.containsKey(APP_NAME)) {
+                appInfoMap.put(APP_NAME, appPkgname);
             }
 
             // get and put app icon
-            if(subProcessName == null && !appInfoMap.containsKey(APP_ICON)) {
-                if (appInfo != null) {
-                    appInfoMap.put(APP_ICON, appInfo.loadIcon(appHelper.getPm()));
-                } else {
-                    appInfoMap.put(APP_ICON, android.R.drawable.sym_def_app_icon);
-                }
+            if(appInfo != null) {
+                appInfoMap.put(APP_ICON, appInfo.loadIcon(appHelper.getPm()));
+            } else if(!appInfoMap.containsKey(APP_ICON)) {
+                appInfoMap.put(APP_ICON, android.R.drawable.sym_def_app_icon);
             }
 
             // get memory size of app process, store mem info <Key(pid), Value(Debug.MemoryInfo)>
-            SparseArray<Debug.MemoryInfo> memoryInfos = (SparseArray<Debug.MemoryInfo>)appInfoMap.get(APP_PROC_MEM);
-            if(memoryInfos == null) memoryInfos = new SparseArray<Debug.MemoryInfo>();
-            memoryInfos.put(runningProcessInfo.pid,
-                    getDebugMemoryInfos(new int[] {runningProcessInfo.pid})[0]);
+            SparseArray<Debug.MemoryInfo> memoryInfoArray = (SparseArray<Debug.MemoryInfo>)appInfoMap.get(APP_PROC_MEM);
+            if(memoryInfoArray == null) memoryInfoArray = new SparseArray<Debug.MemoryInfo>();
+            Debug.MemoryInfo memInfo = getDebugMemoryInfos(new int[] {runningProcessInfo.pid})[0];
+            memoryInfoArray.put(runningProcessInfo.pid, memInfo);
+            appInfoMap.put(APP_PROC_MEM, memoryInfoArray);
 
+            // update total
+            int totalPss = 0;
+            if(appInfoMap.containsKey(APP_TOTAL_PSS)) totalPss = (Integer)appInfoMap.get(APP_TOTAL_PSS);
+            totalPss += memInfo.getTotalPss();
+            appInfoMap.put(APP_TOTAL_PSS, totalPss);
+
+            // add process in process array
             List<RunningAppProcessInfo> processes = (ArrayList<RunningAppProcessInfo>)appInfoMap.get(APP_PROCS);
             if(processes == null) processes = new ArrayList<RunningAppProcessInfo>();
-
             processes.add(runningProcessInfo);
             appInfoMap.put(APP_PROCS, processes);
+
+            runningApps.put(appPkgname, appInfoMap);
         }
-        return null;
+        Log.i(TAG, "iterate process list cost:" + (System.currentTimeMillis() - start));
+        return sortMap(runningApps);
+    }
+
+    private static List<Map<String, Object>> sortMap(Map<String, Map<String, Object>> unsortedMap) {
+        List<Map<String, Object>> list = new LinkedList<>(unsortedMap.values());
+        Collections.sort(list, new Comparator<Map<String, Object>>() {
+            @Override
+            public int compare(Map<String, Object> lhs, Map<String, Object> rhs) {
+                int lhsTotalPss = (Integer)lhs.get(APP_TOTAL_PSS);
+                int rhsTotalPss = (Integer)rhs.get(APP_TOTAL_PSS);
+                return lhsTotalPss < rhsTotalPss ? 1 : (lhsTotalPss == rhsTotalPss ? 0 : -1);
+            }
+        });
+        return list;
     }
 }

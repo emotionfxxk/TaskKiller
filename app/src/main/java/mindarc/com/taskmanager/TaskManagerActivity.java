@@ -21,6 +21,7 @@ import android.widget.ImageView;
 import android.widget.ListView;
 import android.widget.TextView;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -37,7 +38,7 @@ public class TaskManagerActivity extends Activity implements View.OnClickListene
     private List<Map<String, Object>> mProcessInfos;
     private static final int LOAD_PROCESS_INFOS = 1;
     private boolean[] mListItemSelected;
-    private Debug.MemoryInfo[] mMemInfos;
+    //private Debug.MemoryInfo[] mMemInfos;
 
     private ListView mProcessList;
     private Button mBtnClear;
@@ -127,7 +128,9 @@ public class TaskManagerActivity extends Activity implements View.OnClickListene
             holder.checkBox.setTag(Integer.valueOf(position));
             holder.checkBox.setOnCheckedChangeListener(TaskManagerActivity.this);
             Map<String, Object> processInfo = mProcessInfos.get(position);
-            Debug.MemoryInfo memInfo = mMemInfos[position];
+            //Debug.MemoryInfo memInfo = mMemInfos[position];
+            int memorySizeKb = (Integer)processInfo.get(ProcessHelper.APP_TOTAL_PSS);
+            Log.i(TAG, "app name: " +(String)processInfo.get(ProcessHelper.APP_NAME));
             Drawable appIcon;
             if(processInfo.get(ProcessHelper.APP_ICON) instanceof Drawable) {
                 appIcon = (Drawable)processInfo.get(ProcessHelper.APP_ICON);
@@ -135,7 +138,7 @@ public class TaskManagerActivity extends Activity implements View.OnClickListene
                 appIcon = TaskManagerActivity.this.getResources().getDrawable((Integer)processInfo.get(ProcessHelper.APP_ICON));
             }
             holder.title.setText((String)processInfo.get(ProcessHelper.APP_NAME));
-            holder.detail.setText(Formatter.formatFileSize(TaskManagerActivity.this, memInfo.getTotalPss() * 1024));
+            holder.detail.setText(Formatter.formatFileSize(TaskManagerActivity.this, memorySizeKb * 1024));
             holder.appIcon.setImageDrawable(appIcon);
             holder.checkBox.setChecked(mListItemSelected[position]);
             return view;
@@ -148,12 +151,21 @@ public class TaskManagerActivity extends Activity implements View.OnClickListene
         new Thread() {
             @Override
             public void run() {
-                mProcessInfos = mProcessHelper.getProcessInfos(getApplicationContext());
+                long start = System.currentTimeMillis();
+                //mProcessInfos = mProcessHelper.getProcessInfos(getApplicationContext());
+                //Log.i(TAG, "cost 1:" + (System.currentTimeMillis() - start));
+                //start = System.currentTimeMillis();
+                mProcessInfos = mProcessHelper.getRunningApps(getApplicationContext());
+                Log.i(TAG, "cost 2:" + (System.currentTimeMillis() - start));
+
+                /*
+                start = System.currentTimeMillis();
                 int[] pids = new int[mProcessInfos.size()];
                 for (int i = 0; i < mProcessInfos.size(); i++) {
                     pids[i] =  (Integer)mProcessInfos.get(i).get(ProcessHelper.APP_PID);
                 }
                 mMemInfos = mProcessHelper.getDebugMemoryInfos(pids);
+                Log.i(TAG, "get memory here:" + (System.currentTimeMillis() - start));*/
                 handler.sendEmptyMessage(LOAD_PROCESS_INFOS);
             }
         }.start();
@@ -252,7 +264,7 @@ public class TaskManagerActivity extends Activity implements View.OnClickListene
         for(int pos = 0; pos < mListItemSelected.length; ++pos) {
             if(mListItemSelected[pos]) {
                 ++selectedProcessCount;
-                cleanedMem += mMemInfos[pos].getTotalPss();
+                cleanedMem += (Integer)mProcessInfos.get(pos).get(ProcessHelper.APP_TOTAL_PSS);
             }
         }
         mBtnClear.setText(selectedProcessCount == 0 ? "No process selected" : "Kill " +
