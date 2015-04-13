@@ -122,6 +122,7 @@ public class ProcessHelper {
 		IGNORE_PKGS.add("com.android.phone");
 		IGNORE_PKGS.add("com.android.email");
 		IGNORE_PKGS.add("com.android.systemui");
+        IGNORE_PKGS.add("android.process.media");
 		IGNORE_PKGS.add(ProcessHelper.class.getPackage().getName());
         IGNORE_PKGS.add("com.oppo.launcher");
         IGNORE_PKGS.add("android.process.acore");
@@ -138,63 +139,19 @@ public class ProcessHelper {
 
 	/**
 	 * Get all running apps
-	 * 
+	 * 如何判断多个进程是属于一个app？
+     * 1. 相同的前缀包名
+     * 返回的运行时应用列表， 按照内存占用量降序排序
 	 * @param context
 	 * @return
 	 */
-	public List<Map<String, Object>> getProcessInfos(Context context) {
-		List<Map<String, Object>> rt = new ArrayList<Map<String, Object>>();
-		List<RunningAppProcessInfo> list = this.activityManager
-				.getRunningAppProcesses();
-		if (list != null) {
-			for (RunningAppProcessInfo runningAppProcessInfo : list) {
-				String packageName = runningAppProcessInfo.processName;
-                Log.i(TAG, packageName + " : " + String.valueOf(runningAppProcessInfo.pid));
-				// Ignore uniq task
-				if (IGNORE_PKGS.contains(packageName))
-					continue;
-				ApplicationInfo appInfo = this.appHelper
-						.getApplicationInfo(packageName);
-				Map<String, Object> processInfo = new HashMap<String, Object>();
-				processInfo.put(PKG_NAME, packageName);
-                processInfo.put(APP_PID, runningAppProcessInfo.pid);
-                processInfo.put(APP_UID, runningAppProcessInfo.uid);
-                final String title = (String)((appInfo != null) ? this.appHelper.getPm().getApplicationLabel(appInfo) : "???");
-                final String name = (appInfo != null) ? appInfo.loadLabel(this.appHelper.getPm())
-                        .toString() : "???";
 
-                Log.i(TAG, packageName + " : " + appInfo + " : " + title + " : " + runningAppProcessInfo.uid);
-				if (appInfo != null) {
-					processInfo.put(APP_NAME,
-							appInfo.loadLabel(this.appHelper.getPm())
-									.toString());
-					processInfo.put(APP_ICON,
-							appInfo.loadIcon(this.appHelper.getPm()));
-
-				} else {
-					processInfo.put(APP_NAME, packageName);
-					processInfo.put(APP_ICON, android.R.drawable.sym_def_app_icon);
-				}
-				rt.add(processInfo);
-			}
-		}
-		return rt;
-
-	}
-    // 如何判断多个进程是属于一个app？
-    // 规则1： 相同的UID
-    // 规则2： 相同的前缀包名
-    // 规则1 & 规则2
-    // 返回的运行时应用列表， 按照内存占用量降序排序
     public List<Map<String, Object>> getRunningApps(Context ctx) {
-        long start = System.currentTimeMillis();
 
         // get all running app processes
         List<RunningAppProcessInfo> runningAppProcesses = activityManager.getRunningAppProcesses();
-        Log.i(TAG, "getRunningAppProcesses cost:" + (System.currentTimeMillis() - start));
         if(runningAppProcesses == null) return null;
 
-        start = System.currentTimeMillis();
         Collections.sort(runningAppProcesses, new Comparator<RunningAppProcessInfo>() {
             @Override
             public int compare(RunningAppProcessInfo lhs, RunningAppProcessInfo rhs) {
@@ -203,12 +160,10 @@ public class ProcessHelper {
                 return lhsPkgName.compareToIgnoreCase(rhsPkgName);
             }
         });
-        Log.i(TAG, "sort process list cost:" + (System.currentTimeMillis() - start));
         for(RunningAppProcessInfo runningProcessInfo : runningAppProcesses) {
             Log.i(TAG, "after sort:" + runningProcessInfo.processName);
         }
 
-        start = System.currentTimeMillis();
         Map<String, Map<String, Object>> runningApps = new HashMap<String, Map<String, Object>>();
         // iterate the running app process list
         for(RunningAppProcessInfo runningProcessInfo : runningAppProcesses) {
@@ -278,7 +233,6 @@ public class ProcessHelper {
 
             runningApps.put(appPkgname, appInfoMap);
         }
-        Log.i(TAG, "iterate process list cost:" + (System.currentTimeMillis() - start));
         return sortMap(runningApps);
     }
 

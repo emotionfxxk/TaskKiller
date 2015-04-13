@@ -26,6 +26,7 @@
         android:layout_toStartOf="@id/check_mark"
         android:layout_marginEnd="8dp"
         android:textAppearance="?android:attr/textAppearanceListItemSmall"
+        android:textSize="14sp"
         android:gravity="end|center_vertical"/>
     <LinearLayout android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -38,11 +39,13 @@
         <TextView android:id="@+id/title"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textAppearance="?android:attr/textAppearanceListItemSmall" />
+            android:textAppearance="?android:attr/textAppearanceListItemSmall"
+            android:textSize="14sp"/>
         <TextView android:id="@+id/sub_title"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:textAppearance="?android:attr/textAppearanceListItemSmall"
+            android:textSize="14sp"
             android:visibility="gone"/>
     </LinearLayout>>
 </RelativeLayout>
