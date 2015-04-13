@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 import android.app.ActivityManager;
@@ -14,6 +15,7 @@ import android.content.Context;
 import android.content.pm.ApplicationInfo;
 import android.os.Debug;
 import android.util.Log;
+import android.util.SparseArray;
 
 /**
  * Process helper to get process infos
@@ -32,6 +34,8 @@ public class ProcessHelper {
 	public static final String APP_ICON = "appIcon";
     public static final String APP_PID = "appPid";
     public static final String APP_UID = "appUid";
+    public static final String APP_PROCS = "appProcs";
+    public static final String APP_PROC_MEM = "appProcMem";
 
 	public ActivityManager getActivityManager() {
 		return activityManager;
@@ -150,7 +154,11 @@ public class ProcessHelper {
 				processInfo.put(PKG_NAME, packageName);
                 processInfo.put(APP_PID, runningAppProcessInfo.pid);
                 processInfo.put(APP_UID, runningAppProcessInfo.uid);
-                Log.i(TAG, packageName + " : " + appInfo);
+                final String title = (String)((appInfo != null) ? this.appHelper.getPm().getApplicationLabel(appInfo) : "???");
+                final String name = (appInfo != null) ? appInfo.loadLabel(this.appHelper.getPm())
+                        .toString() : "???";
+
+                Log.i(TAG, packageName + " : " + appInfo + " : " + title + " : " + runningAppProcessInfo.uid);
 				if (appInfo != null) {
 					processInfo.put(APP_NAME,
 							appInfo.loadLabel(this.appHelper.getPm())
@@ -168,4 +176,76 @@ public class ProcessHelper {
 		return rt;
 
 	}
+    // 如何判断多个进程是属于一个app？
+    // 规则1： 相同的UID
+    // 规则2： 相同的前缀包名
+    // 规则1 & 规则2
+    // 返回的运行时应用列表， 按照内存占用量降序排序
+    private final static int SYSTEM_UID = 1000;
+    public List<Map<String, Object>> getRunningApps(Context ctx) {
+        // get all running app processes
+        List<RunningAppProcessInfo> runningAppProcesses = activityManager.getRunningAppProcesses();
+        if(runningAppProcesses == null) return null;
+        Map<String, Map<String, Object>> runningApps = new HashMap<String, Map<String, Object>>();
+        // iterate the running app process list
+        for(RunningAppProcessInfo runningProcessInfo : runningAppProcesses) {
+            String[] pkgNameSections = runningProcessInfo.processName.split(":");
+            Log.i(TAG, "process name:" + runningProcessInfo.processName + ", pkgNameSections length:" + pkgNameSections.length);
+            if(pkgNameSections.length == 0) {
+                // TODO: process name is ""?
+                continue;
+            }
+            String appPkgname = pkgNameSections[0];
+            String subProcessName = (pkgNameSections.length == 2) ? pkgNameSections[1] : null;
+            Log.i(TAG, "appPkgname:" + appPkgname + ", subProcessName:" + subProcessName);
+
+            ApplicationInfo appInfo = appHelper.getApplicationInfo(runningProcessInfo.processName);
+
+            // get app info by app package name
+            Map<String, Object> appInfoMap = runningApps.get(appPkgname);
+            if(appInfoMap == null) appInfoMap = new HashMap<String, Object>();
+
+            // put app package name
+            if(!appInfoMap.containsKey(PKG_NAME)) {
+                appInfoMap.put(PKG_NAME, appPkgname);
+            }
+
+            // put app uid
+            if(!appInfoMap.containsKey(APP_UID)) {
+                appInfoMap.put(APP_UID, runningProcessInfo.uid);
+            }
+
+            // only main process can get human readable name
+            if(subProcessName == null && !appInfoMap.containsKey(APP_NAME)) {
+                if (appInfo != null) {
+                    appInfoMap.put(APP_NAME, appInfo.loadLabel(appHelper.getPm()).toString());
+                } else {
+                    appInfoMap.put(APP_NAME, appPkgname);
+                }
+
+            }
+
+            // get and put app icon
+            if(subProcessName == null && !appInfoMap.containsKey(APP_ICON)) {
+                if (appInfo != null) {
+                    appInfoMap.put(APP_ICON, appInfo.loadIcon(appHelper.getPm()));
+                } else {
+                    appInfoMap.put(APP_ICON, android.R.drawable.sym_def_app_icon);
+                }
+            }
+
+            // get memory size of app process, store mem info <Key(pid), Value(Debug.MemoryInfo)>
+            SparseArray<Debug.MemoryInfo> memoryInfos = (SparseArray<Debug.MemoryInfo>)appInfoMap.get(APP_PROC_MEM);
+            if(memoryInfos == null) memoryInfos = new SparseArray<Debug.MemoryInfo>();
+            memoryInfos.put(runningProcessInfo.pid,
+                    getDebugMemoryInfos(new int[] {runningProcessInfo.pid})[0]);
+
+            List<RunningAppProcessInfo> processes = (ArrayList<RunningAppProcessInfo>)appInfoMap.get(APP_PROCS);
+            if(processes == null) processes = new ArrayList<RunningAppProcessInfo>();
+
+            processes.add(runningProcessInfo);
+            appInfoMap.put(APP_PROCS, processes);
+        }
+        return null;
+    }
 }
