@@ -22,6 +22,7 @@ import android.widget.TextView;
 
 import mindarc.com.taskmanager.util.MemorySizeFormatter;
 
+import java.lang.ref.WeakReference;
 import java.util.List;
 import java.util.Map;
 
@@ -34,30 +35,52 @@ public class TaskManagerActivity extends Activity implements View.OnClickListene
     private ActivityManager mActivityManager;
 
     private List<Map<String, Object>> mProcessInfos;
-    private static final int LOAD_PROCESS_INFOS = 1;
+    private static final int LOAD_PROCESS_INFOS = -1;
 
     private ListView mProcessList;
     private Button mBtnClear;
     private TextView mMemInfoText;
+    private ScanRunningAppHandler mScanHandler;
 
-    private final Handler handler = new Handler() {
+    private final static class ScanRunningAppHandler extends Handler {
+        private WeakReference<TaskManagerActivity> mActivity;
+        public ScanRunningAppHandler(TaskManagerActivity activity) {
+            mActivity = new WeakReference<TaskManagerActivity>(activity);
+        }
         @Override
         public void handleMessage(Message msg) {
-            if (msg.what == LOAD_PROCESS_INFOS) {
-
-                if ((mProcessInfos == null) || mProcessInfos.isEmpty()) {
-                    mProcessList.setAdapter(null);
-                    return;
-                } else {
-                    Log.i(TAG, "cost:" + (System.currentTimeMillis() - startTime) + "ms");
-                    Log.w(TAG, "There are " + mProcessInfos.size() + " apps running now.");
-                    mProcessList.setAdapter(new ProcessListAdapter());
-                    updateButtonInfo();
-
-                }
+            TaskManagerActivity activity = mActivity.get();
+            if(activity == null) return;
+            switch (msg.what) {
+                case LOAD_PROCESS_INFOS:
+                    activity.handleLoadProcessInfo();
+                    break;
+                case ProcessHelper.MSG_ON_GET_STARTED:
+                    break;
+                case ProcessHelper.MSG_ON_GET_APP:
+                    activity.handleLoadProcessInfo((List<Map<String, Object>>)msg.obj);
+                    break;
+                case ProcessHelper.MSG_ON_GET_FINISHED:
+                    break;
             }
         }
-    };
+    }
+    protected void handleLoadProcessInfo(List<Map<String, Object>> processInfos) {
+        mProcessInfos = processInfos;
+        handleLoadProcessInfo();
+    }
+
+    protected void handleLoadProcessInfo() {
+        if ((mProcessInfos == null) || mProcessInfos.isEmpty()) {
+            mProcessList.setAdapter(null);
+            return;
+        } else {
+            Log.i(TAG, "cost:" + (System.currentTimeMillis() - startTime) + "ms");
+            Log.w(TAG, "There are " + mProcessInfos.size() + " apps running now.");
+            mProcessList.setAdapter(new ProcessListAdapter());
+            updateButtonInfo();
+        }
+    }
 
     @Override
     public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
@@ -137,7 +160,7 @@ public class TaskManagerActivity extends Activity implements View.OnClickListene
                 long start = System.currentTimeMillis();
                 mProcessInfos = mProcessHelper.getRunningApps(getApplicationContext());
                 Log.i(TAG, "Get apps info list cost:" + (System.currentTimeMillis() - start));
-                handler.sendEmptyMessage(LOAD_PROCESS_INFOS);
+                mScanHandler.sendEmptyMessage(LOAD_PROCESS_INFOS);
             }
         }.start();
     }
@@ -154,6 +177,7 @@ public class TaskManagerActivity extends Activity implements View.OnClickListene
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_task_manager);
+        mScanHandler = new ScanRunningAppHandler(this);
         mProcessList = (ListView) findViewById(R.id.tasks);
         mBtnClear = (Button) findViewById(R.id.button_clear);
         mMemInfoText = (TextView) findViewById(R.id.mem_info);
@@ -166,7 +190,8 @@ public class TaskManagerActivity extends Activity implements View.OnClickListene
         mBtnClear.setOnClickListener(this);
         updateMemoryInfo();
 
-        updateProcessInfoAsync();
+        //updateProcessInfoAsync();
+        mProcessHelper.getRunningAppsAsync(mScanHandler);
     }
 
     @Override
@@ -208,7 +233,8 @@ public class TaskManagerActivity extends Activity implements View.OnClickListene
         startTime = System.currentTimeMillis();
         updateMemoryInfo();
         Log.i(TAG, "update memory info cost:" + (System.currentTimeMillis() - startTime) + "ms");
-        updateProcessInfoAsync();
+        //updateProcessInfoAsync();
+        mProcessHelper.getRunningAppsAsync(mScanHandler);
     }
 
     private void updateButtonInfo() {
